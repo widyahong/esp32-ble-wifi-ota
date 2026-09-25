@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ESP32 Control</title>
+</head>
+<body>
+
+<h3>1. Bluetooth</h3>
+<button onclick="connectBLE()">Connect Bluetooth</button>
+
+<h3>2. WiFi</h3>
+SSID:<br>
+<input id="ssid" type="text"><br><br>
+Password:<br>
+<input id="pass" type="password"><br><br>
+<button onclick="sendWifi()">Send WiFi</button>
+
+<h3>3. OTA Update</h3>
+<button onclick="sendOTA()">Trigger OTA</button>
+
+<h3>Serial Console</h3>
+<textarea id="monitor" rows="8" cols="32" readonly></textarea><br>
+<input id="cmd" type="text" size="24">
+<button onclick="sendRaw()">Send</button>
+
+<script>
+const SERVICE_UUID = "0000aaaa-0000-1000-8000-00805f9b34fb";
+const CHAR_UUID    = "0000bbbb-0000-1000-8000-00805f9b34fb";
+
+let bleDevice = null;
+let bleChar = null;
+
+function log(msg) {
+  const box = document.getElementById("monitor");
+  box.value += msg + "\n";
+  box.scrollTop = box.scrollHeight;
+}
+
+async function connectBLE() {
+  try {
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE_UUID] }]
+    });
+    const server = await bleDevice.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    bleChar = await service.getCharacteristic(CHAR_UUID);
+
+    await bleChar.startNotifications();
+    bleChar.addEventListener("characteristicvaluechanged", (e) => {
+      const text = new TextDecoder().decode(e.target.value);
+      log(text);
+    });
+
+    log("[BLE] Connected");
+  } catch (err) {
+    log("[BLE] Error: " + err);
+  }
+}
+
+async function bleWrite(text) {
+  if (!bleChar) { log("[BLE] Not connected"); return; }
+  const data = new TextEncoder().encode(text);
+  await bleChar.writeValue(data);
+}
+
+function sendWifi() {
+  const ssid = document.getElementById("ssid").value;
+  const pass = document.getElementById("pass").value;
+  bleWrite("WIFI:" + ssid + "|" + pass);
+  log("[SENT] WIFI credentials");
+}
+
+function sendOTA() {
+  bleWrite("OTA");
+  log("[SENT] OTA trigger");
+}
+
+function sendRaw() {
+  const cmd = document.getElementById("cmd").value;
+  bleWrite(cmd);
+  log("[SENT] " + cmd);
+  document.getElementById("cmd").value = "";
+}
+
+document.getElementById("cmd").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    sendRaw();
+  }
+});
+</script>
+</body>
+</html>
